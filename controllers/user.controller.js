@@ -15,6 +15,15 @@ const loginUserSchema = Joi.object({
   password: Joi.string().pattern(new RegExp("^[a-zA-Z0-9]{3,30}$")),
 });
 
+const updateUserSchema = Joi.object({
+  name: Joi.string(),
+  username: Joi.string(),
+  email: Joi.string().email({ minDomainSegments: 2 }),
+  password: Joi.string().pattern(new RegExp("^[a-zA-Z0-9]{3,30}$")),
+  profilePic: Joi.string(),
+  bio: Joi.string().max(256),
+});
+
 export const signupUser = async (req, res) => {
   try {
     const { name, username, email, password } =
@@ -96,7 +105,7 @@ export const followUnfollowUser = async (req, res) => {
     const userToModify = await User.findById(id);
     const currentUser = await User.findById(req.user._id);
 
-    if (id === req.user._id)
+    if (id === req.user._id.toString())
       return res
         .status(400)
         .json({ message: "You cannot follow/unfollow yourself" });
@@ -125,11 +134,18 @@ export const followUnfollowUser = async (req, res) => {
 };
 
 export const updateUser = async (req, res) => {
-  const { name, email, username, password, profilePic, bio } = req.body;
+  const { name, email, username, password, profilePic, bio } =
+    await updateUserSchema.validateAsync(req.body);
   const userId = req.user._id;
   try {
     let user = await User.findById(userId);
     if (!user) return res.status(404).json({ message: "User not found" });
+
+    if (req.params.id !== userId.toString()) {
+      return res
+        .status(403)
+        .json({ message: "You cannot update other user's profile" });
+    }
 
     if (password) {
       const salt = await bcrypt.genSalt(10);
@@ -148,6 +164,21 @@ export const updateUser = async (req, res) => {
       message: "Profile updated successfully",
       user: user.omitPassword(),
     });
+  } catch (error) {
+    res.status(500).json({ message: error.message });
+  }
+};
+
+export const getUserProfile = async (req, res) => {
+  const { username } = req.params;
+  try {
+    const user = await User.findOne({ username })
+      .select("-password")
+      .select("-updateAt");
+
+    if (!user) return res.status(404).json({ message: "User not found" });
+
+    res.status(200).json(user);
   } catch (error) {
     res.status(500).json({ message: error.message });
   }
